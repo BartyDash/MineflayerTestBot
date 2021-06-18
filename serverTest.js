@@ -7,12 +7,13 @@ const GoalFollow = goals.GoalFollow
 const Item=require('prismarine-item')('1.13.2')
 const delay = require('delay')
 
-const LightBlueConcrete = new Item(518, 0)
-const EmeraldBlock = new Item(252, 0)
+var vec3 = require('vec3')
 
 function createBot () {
   let spawnCounter = 0
   let windowCounter = 0
+
+  let mcData = require('minecraft-data')('1.13.2')
 
   const bot = mineflayer.createBot({
     host: 'game3.gc2.pl',
@@ -22,24 +23,22 @@ function createBot () {
   })
   bot.on('error', (err) => console.log(err))
   bot.on('end', createBot)
-
+  // bot.on('inject_allowed', () => {
+  //   const mcData = require('minecraft-data')(bot.version)
+  // })
 
   bot.once('spawn', () => {
     console.log('--------------------------------------------------------------------')
-      //mineflayerViewer(bot, { port: 3007, firstPerson: true }) // port is the minecraft server port, if first person is false, you get a bird's-eye view
-      //const mcData = require('minecraft-data')(bot.version)
-  
-      //console.log(mcData.blocksByName["light_blue_concrete"])
-      //console.log(mcData.blocksByName["emerald_block"])
-  
-  
-      bot.chat('/zaloguj qwert')
-      console.log("zalogowano!")
-  
-      // const movements = new Movements(bot, mcData)
-      // bot.pathfinder.setMovements(movements)
-      // bot.pathfinder.setGoal(new GoalNear(0, 44, 28, 1))
-    })
+    //mineflayerViewer(bot, { port: 3007, firstPerson: true }) // port is the minecraft server port, if first person is false, you get a bird's-eye view
+    //let mcData = require('minecraft-data')(bot.version)
+
+    bot.chat('/zaloguj qwert')
+    console.log("zalogowano!")
+
+    //const movements = new Movements(bot, mcData)
+    //bot.pathfinder.setMovements(movements)
+    //bot.pathfinder.setGoal(new GoalNear(0, 44, 28, 1))
+  })
   
   bot.on('windowClose', (window) => {
     console.log('window closed')
@@ -60,10 +59,13 @@ function createBot () {
     spawnCounter++
     console.log(spawnCounter)
     if(spawnCounter === 2){
-      bot.chat('/is home')
-      //sayItems()
-      await bot.waitForChunksToLoad()
-      watchChest()
+      bot.chat('/is home 3')
+      sayItems()
+      //await bot.waitForChunksToLoad()
+    }
+    if(spawnCounter === 3){
+      await watchChest()
+      await loop()
     }
   })
 
@@ -85,22 +87,79 @@ function createBot () {
   }
 
   async function watchChest () {
-    const mcData = require('minecraft-data')(bot.version)
+    //const mcData = require('minecraft-data')(bot.version)
+    var loc = vec3(-1049, 10, 31151)
     let chestToOpen = bot.findBlock({
       matching: mcData.blocksByName.chest.id,
-      maxDistance: 6
+      point: loc
     })
     if(!chestToOpen){
       console.log('no chest found')
     }
   const chest = await bot.openChest(chestToOpen)
   sayItems(chest.containerItems())
+  chest.close()
   chest.on('updateSlot', (slot, oldItem, newItem) => {
     console.log(`chest update: ${itemToString(oldItem)} -> ${itemToString(newItem)} (slot: ${slot})`)
   })
   chest.on('close', () => {
     console.log('chest closed')
   })
+  }
+
+  function blockToSow () {
+    return bot.findBlock({
+      point: bot.entity.position,
+      matching: mcData.blocksByName.farmland.id,
+      maxDistance: 6,
+      useExtraInfo: (block) => {
+        const blockAbove = bot.blockAt(block.position.offset(0, 1, 0))
+        return !blockAbove || blockAbove.type === 0
+      }
+    })
+  }
+
+  function blockToHarvest () {
+    return bot.findBlock({
+      point: bot.entity.position,
+      maxDistance: 6,
+      matching: (block) => {
+        return block && block.type === mcData.blocksByName.wheat.id && block.metadata === 7
+      }
+    })
+  }
+
+  function locate(){
+    const mcData = require('minecraft-data')('1.13.2')
+    const movements = new Movements(bot, mcData)
+
+    bot.pathfinder.setMovements(movements)
+  }
+
+  async function loop () {
+    try{
+      while(1){
+        const toHarvest = blockToHarvest()
+        if(toHarvest){
+          await bot.dig(toHarvest)
+        }else{
+          break
+        }
+      }
+      while(1){
+        const toSow = blockToSow()
+        if(toSow){
+          await bot.equip(mcData.itemsByName.wheat_seeds.id, 'hand')
+          await bot.placeBlock(toSow, new vec3(0, 1, 0))
+        }else{
+          break
+        }
+      }
+    }catch(e){
+      console.log(e)
+    }
+
+    setTimeout(loop, 1000)
   }
 }
 
